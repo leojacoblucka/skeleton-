@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Skeletal Atlas — Interactive 3D</title>
+<style>
+  :root{
+    --bg:#0B0E13;
+    --bg-elevated:#0F131A;
+    --panel:#151A22;
+    --panel-2:#1B212B;
+    --border:#262C37;
+    --text:#ECE8DD;
+    --text-dim:#8B94A3;
+    --text-faint:#5B6472;
+    --bone:#E4DBC4;
+    --accent:#D2A24C;
+    --accent-soft:rgba(210,162,76,0.18);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  h1,h2,h3,.serif{font-family:Georgia,"Iowan Old Style","Times New Roman",serif;}
+
+  #canvas-container{position:fixed;inset:0;touch-action:none;}
+  canvas{display:block;width:100%;height:100%;}
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:30;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;
+    background:linear-gradient(to bottom, rgba(11,14,19,0.92), rgba(11,14,19,0));
+    pointer-events:none;
+  }
+  #topbar > *{pointer-events:auto;}
+  .brand{display:flex;flex-direction:column;gap:1px;}
+  .brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:0.2px;color:var(--text);}
+  .brand span{font-size:11px;color:var(--text-dim);}
+  .icon-btn{
+    display:flex;align-items:center;gap:7px;
+    background:var(--panel);border:1px solid var(--border);color:var(--text);
+    padding:9px 13px;border-radius:9px;font-size:13px;cursor:pointer;
+    font-family:inherit;
+  }
+  .icon-btn:active{background:var(--panel-2);}
+  .icon-btn svg{width:15px;height:15px;flex-shrink:0;}
+
+  /* ---------- Nav (regions) panel ---------- */
+  #nav-scrim, #info-scrim{
+    position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:39;
+    opacity:0;pointer-events:none;transition:opacity .25s ease;
+  }
+  #nav-scrim.open,#info-scrim.open{opacity:1;pointer-events:auto;}
+
+  #nav-panel{
+    position:fixed;top:0;left:0;bottom:0;width:300px;max-width:86vw;z-index:40;
+    background:var(--panel);border-right:1px solid var(--border);
+    transform:translateX(-102%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+    display:flex;flex-direction:column;
+  }
+  #nav-panel.open{transform:translateX(0);}
+  #nav-header{
+    padding:18px 18px 12px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  #nav-header h2{margin:0;font-size:16px;font-weight:600;}
+  #nav-close{background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;line-height:1;padding:4px;}
+  #nav-tree{flex:1;overflow-y:auto;padding:8px 10px 24px;}
+  .nav-branch{margin-bottom:2px;}
+  .nav-branch-label{
+    display:flex;align-items:center;gap:6px;
+    padding:8px 8px;border-radius:7px;cursor:pointer;font-size:13.5px;color:var(--text);
+    font-weight:600;
+  }
+  .nav-branch-label:active{background:var(--panel-2);}
+  .nav-branch-label .caret{
+    width:8px;height:8px;border-right:1.5px solid var(--text-faint);border-bottom:1.5px solid var(--text-faint);
+    transform:rotate(-45deg);transition:transform .18s ease;flex-shrink:0;margin-left:2px;
+  }
+  .nav-branch.open > .nav-branch-label .caret{transform:rotate(45deg);}
+  .nav-children{max-height:0;overflow:hidden;transition:max-height .22s ease;padding-left:14px;}
+  .nav-branch.open > .nav-children{max-height:1200px;}
+  .nav-leaf{
+    padding:7px 8px 7px 16px;border-radius:7px;font-size:13px;color:var(--text-dim);
+    cursor:pointer;border-left:1px solid var(--border);
+  }
+  .nav-leaf:active{background:var(--panel-2);color:var(--text);}
+  .nav-leaf.selected, .nav-branch-label.selected{color:var(--accent);background:var(--accent-soft);}
+  .nav-sys{font-size:11px;text-transform:none;color:var(--text-faint);padding:10px 8px 4px;letter-spacing:.2px;}
+
+  /* ---------- Info panel (bottom sheet) ---------- */
+  #info-panel{
+    position:fixed;left:0;right:0;bottom:0;z-index:41;
+    background:var(--panel);border-top:1px solid var(--border);
+    border-radius:16px 16px 0 0;
+    max-height:62vh;
+    transform:translateY(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+    display:flex;flex-direction:column;
+    box-shadow:0 -8px 30px rgba(0,0,0,0.35);
+  }
+  #info-panel.open{transform:translateY(0);}
+  #info-drag{width:36px;height:4px;background:var(--border);border-radius:3px;margin:10px auto 2px;flex-shrink:0;}
+  #info-scroll{overflow-y:auto;padding:10px 22px 26px;}
+  #info-close{
+    position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);
+    font-size:20px;cursor:pointer;padding:4px;
+  }
+  #info-eyebrow{font-size:11.5px;color:var(--accent);font-weight:600;margin:6px 0 2px;}
+  #info-name{margin:0 0 10px;font-size:22px;font-weight:600;color:var(--text);padding-right:30px;}
+  .info-row{margin-bottom:14px;}
+  .info-label{font-size:11px;color:var(--text-faint);margin-bottom:4px;font-weight:600;}
+  .info-value{font-size:14px;color:var(--text);line-height:1.5;}
+  .info-list{margin:0;padding-left:18px;color:var(--text);font-size:13.5px;line-height:1.7;}
+  #info-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+  .pill-btn{
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    padding:9px 14px;border-radius:20px;font-size:13px;cursor:pointer;font-family:inherit;
+  }
+  .pill-btn.primary{background:var(--accent);border-color:var(--accent);color:#1a1408;font-weight:600;}
+  .pill-btn:active{opacity:.8;}
+
+  /* ---------- Control bar ---------- */
+  #control-bar{
+    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    max-width:94vw;
+  }
+  .cb-row{
+    display:flex;gap:6px;background:rgba(21,26,34,0.92);backdrop-filter:blur(6px);
+    border:1px solid var(--border);border-radius:14px;padding:6px;
+    flex-wrap:wrap;justify-content:center;
+  }
+  .cb-btn{
+    background:transparent;border:none;color:var(--text-dim);
+    padding:8px 11px;border-radius:9px;font-size:12px;cursor:pointer;font-family:inherit;
+    white-space:nowrap;
+  }
+  .cb-btn:active{background:var(--panel-2);}
+  .cb-btn.active{background:var(--accent-soft);color:var(--accent);}
+  .cb-sep{width:1px;background:var(--border);margin:4px 2px;}
+
+  /* ---------- Hint toast ---------- */
+  #hint{
+    position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:20;
+    background:rgba(21,26,34,0.92);border:1px solid var(--border);color:var(--text-dim);
+    padding:9px 16px;border-radius:20px;font-size:12.5px;max-width:88vw;text-align:center;
+    transition:opacity .5s ease;
+  }
+
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="topbar">
+  <button class="icon-btn" id="nav-toggle">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    Regions
+  </button>
+  <div class="brand">
+    <h1>Skeletal Atlas</h1>
+    <span>Interactive 3D · Human Osteology</span>
+  </div>
+  <button class="icon-btn" id="showall-top" style="visibility:hidden;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>
+    Show all
+  </button>
+</div>
+
+<div id="hint">Drag to rotate · pinch or scroll to zoom · tap a bone to learn more</div>
+
+<div id="nav-scrim"></div>
+<div id="nav-panel">
+  <div id="nav-header">
+    <h2>Skeletal regions</h2>
+    <button id="nav-close">✕</button>
+  </div>
+  <div id="nav-tree"></div>
+</div>
+
+<div id="info-scrim"></div>
+<div id="info-panel">
+  <div id="info-drag"></div>
+  <button id="info-close">✕</button>
+  <div id="info-scroll">
+    <div id="info-eyebrow"></div>
+    <h3 id="info-name">—</h3>
+    <div class="info-row">
+      <div class="info-label">LOCATION</div>
+      <div class="info-value" id="info-location"></div>
+    </div>
+    <div class="info-row">
+      <div class="info-label">DESCRIPTION</div>
+      <div class="info-value" id="info-desc"></div>
+    </div>
+    <div class="info-row" id="info-features-row">
+      <div class="info-label">MAJOR FEATURES</div>
+      <ul class="info-list" id="info-features"></ul>
+    </div>
+    <div class="info-row" id="info-function-row">
+      <div class="info-label">FUNCTION</div>
+      <ul class="info-list" id="info-function"></ul>
+    </div>
+    <div id="info-actions">
+      <button class="pill-btn primary" id="btn-isolate">Isolate selected</button>
+      <button class="pill-btn" id="btn-focus">Focus camera</button>
+    </div>
+  </div>
+</div>
+
+<div id="control-bar">
+  <div class="cb-row" id="cb-modes">
+    <button class="cb-btn" data-mode="explode">Explode view</button>
+    <button class="cb-btn" id="cb-showall" style="display:none;">Show full skeleton</button>
+  </div>
+  <div class="cb-row" id="cb-cam">
+    <button class="cb-btn" data-view="front">Front</button>
+    <button class="cb-btn" data-view="back">Back</button>
+    <button class="cb-btn" data-view="left">Left</button>
+    <button class="cb-btn" data-view="right">Right</button>
+    <button class="cb-btn" data-view="top">Top</button>
+    <button class="cb-btn" data-view="bottom">Bottom</button>
+    <div class="cb-sep"></div>
+    <button class="cb-btn" data-view="reset">Reset view</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   SECTION 1 — SCENE, CAMERA, RENDERER, LIGHTS
+   ========================================================================= */
+
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0B0E13);
+scene.fog = new THREE.Fog(0x0B0E13, 6, 14);
+
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth/window.innerHeight, 0.05, 100);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+if (renderer.outputColorSpace !== undefined) renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Lights
+scene.add(new THREE.AmbientLight(0x8a90a0, 0.55));
+const keyLight = new THREE.DirectionalLight(0xfff3de, 1.15);
+keyLight.position.set(2.2, 3.6, 2.4);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(1536,1536);
+keyLight.shadow.camera.left = -1.6; keyLight.shadow.camera.right = 1.6;
+keyLight.shadow.camera.top = 2.2; keyLight.shadow.camera.bottom = -1.6;
+keyLight.shadow.camera.near = 0.5; keyLight.shadow.camera.far = 8;
+keyLight.shadow.bias = -0.0015;
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x6f83ad, 0.45);
+fillLight.position.set(-2.4, 1.2, -1.6);
+scene.add(fillLight);
+const rimLight = new THREE.DirectionalLight(0xffe9c2, 0.35);
+rimLight.position.set(-0.6, 2.6, -3);
+scene.add(rimLight);
+
+// Floor (subtle clinical pedestal)
+const floorGeo = new THREE.CircleGeometry(2.4, 64);
+const floorMat = new THREE.MeshStandardMaterial({color:0x11151c, roughness:0.95, metalness:0});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI/2;
+floor.position.y = 0;
+floor.receiveShadow = true;
+scene.add(floor);
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.62,0.64,64), new THREE.MeshBasicMaterial({color:0x2b3340, side:THREE.DoubleSide, transparent:true, opacity:0.7}));
+ring.rotation.x = -Math.PI/2; ring.position.y = 0.001;
+scene.add(ring);
+
+/* =========================================================================
+   SECTION 2 — CUSTOM ORBIT CAMERA CONTROLLER
+   ========================================================================= */
+
+const orbit = {
+  target: new THREE.Vector3(0, 1.02, 0),
+  targetGoal: new THREE.Vector3(0, 1.02, 0),
+  theta: 0.55,        // azimuth
+  thetaGoal: 0.55,
+  phi: 1.25,          // polar (from +Y)
+  phiGoal: 1.25,
+  radius: 2.55,
+  radiusGoal: 2.55,
+  minRadius: 0.12,
+  maxRadius: 5.5,
+  minPhi: 0.06,
+  maxPhi: Math.PI - 0.06
+};
+
+function wrapAngleDelta(goal, current){
+  let d = (goal - current) % (Math.PI*2);
+  if (d > Math.PI) d -= Math.PI*2;
+  if (d < -Math.PI) d += Math.PI*2;
+  return d;
+}
+
+function updateCameraFromOrbit(){
+  const sinPhi = Math.sin(orbit.phi);
+  const x = orbit.target.x + orbit.radius * sinPhi * Math.sin(orbit.theta);
+  const y = orbit.target.y + orbit.radius * Math.cos(orbit.phi);
+  const z = orbit.target.z + orbit.radius * sinPhi * Math.cos(orbit.theta);
+  camera.position.set(x,y,z);
+  camera.lookAt(orbit.target);
+}
+
+function tickOrbit(){
+  const dTheta = wrapAngleDelta(orbit.thetaGoal, orbit.theta);
+  orbit.theta += dTheta * 0.16;
+  orbit.phi += (orbit.phiGoal - orbit.phi) * 0.16;
+  orbit.radius += (orbit.radiusGoal - orbit.radius) * 0.16;
+  orbit.target.lerp(orbit.targetGoal, 0.16);
+  updateCameraFromOrbit();
+}
+
+// Pointer-based rotate (mouse + single touch)
+let dragging=false, lastX=0,lastY=0, pointerDownX=0, pointerDownY=0, pointerDownT=0, moved=false;
+const dom = renderer.domElement;
+
+function onPointerDown(x,y){
+  dragging=true; lastX=x; lastY=y; pointerDownX=x; pointerDownY=y; pointerDownT=performance.now(); moved=false;
+}
+function onPointerMove(x,y){
+  if(!dragging) return;
+  const dx = x-lastX, dy = y-lastY;
+  if (Math.abs(x-pointerDownX) > 5 || Math.abs(y-pointerDownY) > 5) moved = true;
+  orbit.thetaGoal -= dx * 0.0072;
+  orbit.phiGoal = Math.min(orbit.maxPhi, Math.max(orbit.minPhi, orbit.phiGoal - dy * 0.0072));
+  orbit.theta = orbit.thetaGoal; orbit.phi = orbit.phiGoal; // direct-feel drag
+  lastX=x; lastY=y;
+}
+function onPointerUp(x,y){
+  dragging=false;
+  const dt = performance.now()-pointerDownT;
+  const dist = Math.hypot(x-pointerDownX, y-pointerDownY);
+  if (dist < 6 && dt < 400) handleTap(x,y);
+}
+
+dom.addEventListener('mousedown', e=>onPointerDown(e.clientX,e.clientY));
+window.addEventListener('mousemove', e=>onPointerMove(e.clientX,e.clientY));
+window.addEventListener('mouseup', e=>onPointerUp(e.clientX,e.clientY));
+
+dom.addEventListener('wheel', e=>{
+  e.preventDefault();
+  orbit.radiusGoal = Math.min(orbit.maxRadius, Math.max(orbit.minRadius, orbit.radiusGoal * (1 + e.deltaY*0.0011)));
+},{passive:false});
+
+// Touch: 1 finger rotate, 2 finger pinch-zoom + pan
+let pinchStartDist = null, pinchStartRadius = null;
+let twoFingerLastMid = null;
+dom.addEventListener('touchstart', e=>{
+  if(e.touches.length===1){
+    onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+  } else if(e.touches.length===2){
+    dragging=false;
+    const [a,b]=e.touches;
+    pinchStartDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    pinchStartRadius = orbit.radiusGoal;
+    twoFingerLastMid = {x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2};
+  }
+},{passive:true});
+dom.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  if(e.touches.length===1 && dragging){
+    onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+  } else if(e.touches.length===2){
+    const [a,b]=e.touches;
+    const dist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    if(pinchStartDist){
+      orbit.radiusGoal = Math.min(orbit.maxRadius, Math.max(orbit.minRadius, pinchStartRadius * (pinchStartDist/dist)));
+    }
+    const mid = {x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2};
+    if(twoFingerLastMid){
+      const dx = mid.x - twoFingerLastMid.x, dy = mid.y - twoFingerLastMid.y;
+      const panScale = orbit.radius * 0.0016;
+      const right = new THREE.Vector3(Math.cos(orbit.theta),0,-Math.sin(orbit.theta));
+      const up = new THREE.Vector3(0,1,0);
+      orbit.targetGoal.addScaledVector(right, -dx*panScale);
+      orbit.targetGoal.addScaledVector(up, dy*panScale);
+    }
+    twoFingerLastMid = mid;
+  }
+},{passive:false});
+dom.addEventListener('touchend', e=>{
+  if(e.touches.length===0){
+    if(!pinchStartDist){
+      onPointerUp(lastX, lastY);
+    }
+    pinchStartDist=null; pinchStartRadius=null; twoFingerLastMid=null;
+  } else if(e.touches.length===1){
+    pinchStartDist=null; twoFingerLastMid=null;
+    onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+  }
+},{passive:true});
+
+function setView(name){
+  const goals = {
+    front:  {theta:0,               phi:Math.PI/2 - 0.02, target:new THREE.Vector3(0,1.02,0)},
+    back:   {theta:Math.PI,         phi:Math.PI/2 - 0.02, target:new THREE.Vector3(0,1.02,0)},
+    right:  {theta:Math.PI/2,       phi:Math.PI/2 - 0.02, target:new THREE.Vector3(0,1.02,0)},
+    left:   {theta:-Math.PI/2,      phi:Math.PI/2 - 0.02, target:new THREE.Vector3(0,1.02,0)},
+    top:    {theta:orbit.thetaGoal, phi:0.12,              target:new THREE.Vector3(0,1.02,0)},
+    bottom: {theta:orbit.thetaGoal, phi:Math.PI - 0.12,    target:new THREE.Vector3(0,0.55,0)},
+    reset:  {theta:0.55,            phi:1.25,              target:new THREE.Vector3(0,1.02,0), radius:2.55}
+  };
+  const g = goals[name];
+  if(!g) return;
+  orbit.thetaGoal = g.theta;
+  orbit.phiGoal = g.phi;
+  orbit.targetGoal.copy(g.target);
+  if(g.radius) orbit.radiusGoal = g.radius;
+}
+
+/* =========================================================================
+   SECTION 3 — BONE-BUILDING HELPERS
+   ========================================================================= */
+
+const pickables = [];   // every mesh that can be raycast-selected
+const bones = {};       // id -> THREE.Group (the bone itself)
+const boneData = {};    // id -> info object
+let uidCounter = 0;
+
+function tintedColor(base, amt){
+  const c = new THREE.Color(base);
+  const h = {h:0,s:0,l:0}; c.getHSL(h);
+  c.setHSL(h.h, Math.max(0,Math.min(1,h.s + (Math.random()-0.5)*0.02)), Math.max(0,Math.min(1,h.l + (Math.random()-0.5)*amt)));
+  return c;
+}
+
+function boneMat(){
+  return new THREE.MeshStandardMaterial({
+    color: tintedColor('#e4dbc4', 0.05),
+    roughness: 0.72,
+    metalness: 0.02,
+    emissive: 0x000000,
+    emissiveIntensity: 0
+  });
+}
+
+function finalizeMesh(m){
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+// A straight long bone: shaft + two rounded ends, oriented along local +Y
+function makeLongBone(length, shaftRadius, endRadius){
+  const g = new THREE.Group();
+  const shaft = finalizeMesh(new THREE.Mesh(
+    new THREE.CylinderGeometry(shaftRadius, shaftRadius*1.08, length*0.86, 12),
+    boneMat()
+  ));
+  g.add(shaft);
+  const top = finalizeMesh(new THREE.Mesh(new THREE.SphereGeometry(endRadius, 12, 8), boneMat()));
+  top.position.y = length/2 - endRadius*0.55;
+  top.scale.set(1,0.8,1);
+  g.add(top);
+  const bot = finalizeMesh(new THREE.Mesh(new THREE.SphereGeometry(endRadius*0.86, 12, 8), boneMat()));
+  bot.position.y = -length/2 + endRadius*0.5;
+  bot.scale.set(1,0.8,1);
+  g.add(bot);
+  return g;
+}
+
+function makeFlatBone(w,h,d){
+  const geo = new THREE.BoxGeometry(w,h,d,2,2,2);
+  // slightly round the box by nudging corner vertices inward (cheap "soft box")
+  const pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    pos.setX(i, pos.getX(i)*0.94);
+    pos.setZ(i, pos.getZ(i)*0.94);
+  }
+  geo.computeVertexNormals();
+  return finalizeMesh(new THREE.Mesh(geo, boneMat()));
+}
+
+function makeSmallBlock(w,h,d){
+  return finalizeMesh(new THREE.Mesh(new THREE.BoxGeometry(w,h,d), boneMat()));
+}
+
+function makeSphereBone(r, scaleX,scaleY,scaleZ){
+  const m = finalizeMesh(new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), boneMat()));
+  m.scale.set(scaleX||1, scaleY||1, scaleZ||1);
+  return m;
+}
+
+function makeCurvedTube(points, tubeRadius, segments){
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geo = new THREE.TubeGeometry(curve, segments||14, tubeRadius, 6, false);
+  return finalizeMesh(new THREE.Mesh(geo, boneMat()));
+}
+
+// Registers a THREE.Group as a clickable "bone" with metadata, positions it, adds to scene.
+function registerBone(id, group, position, rotation, data, explodeOffset, explodeRegion){
+  group.position.copy(position);
+  if(rotation) group.rotation.copy(rotation);
+  group.userData.basePos = position.clone();
+  group.userData.explodeOffset = explodeOffset ? explodeOffset.clone() : new THREE.Vector3();
+  group.traverse(o=>{ if(o.isMesh){ o.userData.rootId = id; pickables.push(o); } });
+  bones[id] = group;
+  boneData[id] = data;
+  if(explodeRegion){
+    if(!REGION_GROUPS[explodeRegion]) REGION_GROUPS[explodeRegion] = [];
+    REGION_GROUPS[explodeRegion].push(id);
+  }
+  scene.add(group);
+  return group;
+}
+
+const REGION_GROUPS = {}; // explodeRegionKey -> [boneId,...]  (used for explode animation)
+
+/* =========================================================================
+   SECTION 4 — SKELETON GEOMETRY (anatomically-proportioned procedural build)
+   ========================================================================= */
+
+// ---- vertical layout constants (meters) ----
+const ANKLE_Y = 0.075;
+const KNEE_Y  = ANKLE_Y + 0.40;
+const HIP_Y   = KNEE_Y + 0.45;
+const PELVIS_TOP_Y = HIP_Y + 0.17;
+const SACRUM_BOT_Y = HIP_Y - 0.02;
+const LUMBAR_TOP_Y = PELVIS_TOP_Y + 0.16;
+const THORACIC_TOP_Y = LUMBAR_TOP_Y + 0.28;
+const CERVICAL_TOP_Y = THORACIC_TOP_Y + 0.12;
+const SKULL_TOP_Y = CERVICAL_TOP_Y + 0.20;
+const SHOULDER_Y = THORACIC_TOP_Y - 0.02;
+
+const V0 = new THREE.Vector3(0,0,0);
+const ZERO_ROT = new THREE.Euler(0,0,0);
+
+/* ---------- SKULL ---------- */
+(function buildSkull(){
+  const cranial = makeSphereBone(0.095, 1.02, 0.98, 1.15);
+  cranial.position.set(0, 0.045, -0.01);
+  registerBone('cranial_bones', new THREE.Group().add(cranial),
+    new THREE.Vector3(0, SKULL_TOP_Y - 0.10, 0), ZERO_ROT,
+    {
+      name:'Cranial Bones', region:'Axial Skeleton › Skull',
+      location:'Upper skull, forming the vault around the brain.',
+      description:'The cranial bones form the rounded case that encloses and protects the brain. Several flat bones fuse together at immovable joints called sutures.',
+      features:['Frontal bone','Parietal bones (2)','Temporal bones (2)','Occipital bone','Sphenoid & ethmoid','Sutures'],
+      func:['Encases and protects the brain','Anchors muscles of mastication and the neck','Houses middle and inner ear structures']
+    }, new THREE.Vector3(0,0.35,0), 'skull');
+
+  const facial = new THREE.Group();
+  const face = makeSmallBlock(0.10, 0.085, 0.075);
+  face.position.set(0, -0.045, 0.055);
+  const jaw = makeSmallBlock(0.085, 0.03, 0.06);
+  jaw.position.set(0,-0.095,0.05);
+  facial.add(face, jaw);
+  registerBone('facial_bones', facial,
+    new THREE.Vector3(0, SKULL_TOP_Y - 0.10, 0), ZERO_ROT,
+    {
+      name:'Facial Bones', region:'Axial Skeleton › Skull',
+      location:'Front and lower skull, forming the face.',
+      description:'The facial bones shape the face, form the eye sockets and nasal cavity, and hold the upper and lower teeth.',
+      features:['Maxilla','Mandible','Zygomatic bones','Nasal bones','Lacrimal & palatine bones','Vomer'],
+      func:['Support facial structure and expression','House the teeth','Form the eye orbits and nasal cavity','Anchor chewing muscles']
+    }, new THREE.Vector3(0,0.35,0), 'skull');
+})();
+
+/* ---------- VERTEBRAL COLUMN ---------- */
+function buildVertebraeSet(id, name, count, yStart, yEnd, radius, spinousLen, region, desc, feats, func){
+  const g = new THREE.Group();
+  for(let i=0;i<count;i++){
+    const t = count===1?0:i/(count-1);
+    const y = yStart + (yEnd-yStart)*t;
+    const body = makeSmallBlock(radius*2, (yEnd-yStart)/count*0.7, radius*1.7);
+    body.position.set(0,y,0);
+    const spinous = makeSmallBlock(radius*0.35, (yEnd-yStart)/count*0.5, spinousLen);
+    spinous.position.set(0,y,-(radius*0.85+spinousLen/2));
+    g.add(body, spinous);
+  }
+  registerBone(id, g, V0.clone(), ZERO_ROT, {
+    name, region:'Axial Skeleton › Vertebral Column',
+    location:desc.location, description:desc.text, features:feats, func
+  }, new THREE.Vector3(0,0,0), 'spine');
+}
+buildVertebraeSet('cervical_vertebrae','Cervical Vertebrae',7, THORACIC_TOP_Y, CERVICAL_TOP_Y, 0.028, 0.02, null,
+  {location:'Neck region, vertebrae C1–C7.', text:'The seven cervical vertebrae form the flexible upper part of the spine, supporting the skull and allowing the head to turn and nod.'},
+  ['Atlas (C1) and axis (C2)','Vertebral foramen','Transverse foramina','Small spinous processes'],
+  ['Supports and moves the head','Protects the spinal cord','Anchors muscles of the neck']);
+buildVertebraeSet('thoracic_vertebrae','Thoracic Vertebrae',12, LUMBAR_TOP_Y, THORACIC_TOP_Y, 0.034, 0.05, null,
+  {location:'Upper-to-mid back, vertebrae T1–T12.', text:'The twelve thoracic vertebrae anchor the ribs and form the rigid back wall of the thoracic cage.'},
+  ['Costal facets for rib attachment','Long, sloped spinous processes','Limited rotation between segments'],
+  ['Anchors the ribs','Protects the spinal cord and thoracic organs','Provides a stable back wall for the chest']);
+buildVertebraeSet('lumbar_vertebrae','Lumbar Vertebrae',5, PELVIS_TOP_Y, LUMBAR_TOP_Y, 0.042, 0.035, null,
+  {location:'Lower back, vertebrae L1–L5.', text:'The five lumbar vertebrae are the largest and strongest in the spine, bearing most of the weight of the upper body.'},
+  ['Large vertebral bodies','Short, blunt spinous processes','Strong pedicles'],
+  ['Supports body weight','Allows flexion and extension of the lower back','Protects the spinal cord and cauda equina']);
+
+(function buildSacrumCoccyx(){
+  const sac = makeSmallBlock(0.10, 0.13, 0.06);
+  registerBone('sacrum', new THREE.Group().add(sac), new THREE.Vector3(0,(SACRUM_BOT_Y+HIP_Y+0.15)/2 - 0.03,-0.03), ZERO_ROT,
+    {name:'Sacrum', region:'Axial Skeleton › Vertebral Column',
+     location:'Base of the spine, wedged between the two hip bones.',
+     description:'The sacrum is a triangular bone formed by five fused vertebrae that links the spine to the pelvis.',
+     features:['Sacral foramina','Sacral promontory','Auricular surface (joins the ilium)'],
+     func:['Transfers upper-body weight to the pelvis','Forms the sacroiliac joints','Protects the sacral nerves']}, new THREE.Vector3(0,0,-0.15),'spine');
+
+  const cox = makeSmallBlock(0.028,0.05,0.024);
+  registerBone('coccyx', new THREE.Group().add(cox), new THREE.Vector3(0, SACRUM_BOT_Y-0.05, -0.02), ZERO_ROT,
+    {name:'Coccyx', region:'Axial Skeleton › Vertebral Column',
+     location:'Tip of the spine, just below the sacrum.',
+     description:'The coccyx, or tailbone, is a small triangular bone formed from several fused, rudimentary vertebrae.',
+     features:['Fused vertebral remnants','Attachment site for pelvic floor muscles'],
+     func:['Anchors pelvic floor and gluteal muscles','Provides weight-bearing support when sitting']}, new THREE.Vector3(0,-0.15,-0.05),'spine');
+})();
+
+/* ---------- THORACIC CAGE ---------- */
+(function buildSternum(){
+  const s = makeFlatBone(0.075, 0.20, 0.018);
+  registerBone('sternum', new THREE.Group().add(s), new THREE.Vector3(0,(LUMBAR_TOP_Y+THORACIC_TOP_Y)/2+0.03,0.135), ZERO_ROT,
+    {name:'Sternum', region:'Axial Skeleton › Thoracic Cage',
+     location:'Centre of the chest, along the midline.',
+     description:'The sternum is a flat bone forming the front of the rib cage, connected to most ribs by costal cartilage.',
+     features:['Manubrium','Body','Xiphoid process'],
+     func:['Protects the heart and major vessels','Anchors the ribs via costal cartilage','Anchors chest wall muscles']}, new THREE.Vector3(0,0.1,0.35),'thorax');
+})();
+
+(function buildRibs(){
+  const g = new THREE.Group();
+  const ribCount = 12;
+  for(let i=0;i<ribCount;i++){
+    const t = i/(ribCount-1);
+    const y = THORACIC_TOP_Y - 0.02 - t*0.30;
+    const isFloating = i>=10;
+    const width = (0.10 + Math.sin(t*Math.PI)*0.115) * (isFloating?0.55:1);
+    const reach = isFloating ? 0.55 : 1;
+    for(const side of [-1,1]){
+      const p0 = new THREE.Vector3(side*0.02, y+0.01, -0.075);
+      const p1 = new THREE.Vector3(side*width*0.55, y-0.005, 0.01);
+      const p2 = new THREE.Vector3(side*width, y-0.02-t*0.01, 0.075);
+      const p3 = new THREE.Vector3(side*width*0.42*reach, y-0.03, 0.12*reach+0.02);
+      const tube = makeCurvedTube([p0,p1,p2,p3], 0.0068, 12);
+      g.add(tube);
+    }
+  }
+  registerBone('ribs', g, V0.clone(), ZERO_ROT,
+    {name:'Ribs', region:'Axial Skeleton › Thoracic Cage',
+     location:'Thoracic cage — 12 pairs curving from the thoracic vertebrae to the front of the chest.',
+     description:'The ribs are curved, flattened bones that form a protective cage around the heart and lungs. Most pairs join the sternum by costal cartilage.',
+     features:['True ribs, pairs 1–7 (attach directly to sternum)','False ribs, pairs 8–10 (attach via shared cartilage)','Floating ribs, pairs 11–12 (no anterior attachment)'],
+     func:['Protects the heart and lungs','Moves during breathing to expand and contract the chest','Anchors respiratory and postural muscles']}, new THREE.Vector3(0,0.08,0.55),'thorax');
+})();
+
+/* ---------- PECTORAL GIRDLE (clavicle + scapula, per side) ---------- */
+function buildPectoralGirdle(side, label){
+  const sx = side; // -1 left(-x), +1 right(+x) — screen-right when facing model
+  const clavGeo = makeLongBone(0.15, 0.011, 0.016);
+  const clav = new THREE.Group().add(clavGeo);
+  clav.rotation.z = sx * (Math.PI/2 - 0.35);
+  registerBone('clavicle_'+label, clav,
+    new THREE.Vector3(sx*0.11, SHOULDER_Y+0.02, 0.095), null,
+    {name:'Clavicle ('+cap(label)+')', region:'Appendicular Skeleton › Pectoral Girdle',
+     location:'Between the shoulder blade and the sternum, along the top of the chest.',
+     description:'The clavicle, or collarbone, is a long S-shaped bone that braces the shoulder and links the arm to the axial skeleton.',
+     features:['Sternal end','Acromial end','Gentle S-shaped curvature'],
+     func:['Braces and stabilizes the shoulder','Transmits force from the arm to the trunk','Protects underlying vessels and nerves']},
+    new THREE.Vector3(sx*0.35,0.15,0),'pectoral_'+label);
+
+  const scap = makeFlatBone(0.13,0.16,0.012);
+  scap.rotation.y = sx*0.35;
+  const scapGroup = new THREE.Group().add(scap);
+  registerBone('scapula_'+label, scapGroup,
+    new THREE.Vector3(sx*0.165, SHOULDER_Y-0.04, -0.075), ZERO_ROT,
+    {name:'Scapula ('+cap(label)+')', region:'Appendicular Skeleton › Pectoral Girdle',
+     location:'Upper back, gliding over ribs 2–7.',
+     description:'The scapula, or shoulder blade, is a flat triangular bone forming part of the shoulder joint and anchoring many shoulder muscles.',
+     features:['Glenoid cavity','Acromion','Coracoid process','Spine of the scapula'],
+     func:['Forms the shoulder joint with the humerus','Anchors muscles that move the arm and shoulder','Allows the shoulder to glide across the rib cage']},
+    new THREE.Vector3(sx*0.3,0.15,-0.1),'pectoral_'+label);
+}
+buildPectoralGirdle(-1,'left');
+buildPectoralGirdle(1,'right');
+
+/* ---------- UPPER LIMB (per side) ---------- */
+function buildUpperLimb(side, label){
+  const sx = side;
+  const shoulderX = sx*0.19, z0 = 0.01;
+
+  const humLen=0.32;
+  const hum = makeLongBone(humLen, 0.017, 0.026);
+  const humY = SHOULDER_Y - humLen/2;
+  registerBone('humerus_'+label, hum, new THREE.Vector3(shoulderX, humY, z0), ZERO_ROT,
+    {name:'Humerus ('+cap(label)+')', region:'Appendicular Skeleton › Upper Limb ('+cap(label)+')',
+     location:'Upper arm, between the shoulder and the elbow.',
+     description:'The humerus is the longest bone of the upper limb, forming the shoulder joint above and the elbow joint below.',
+     features:['Head','Greater & lesser tubercles','Deltoid tuberosity','Trochlea & capitulum'],
+     func:['Supports the upper arm','Anchors shoulder and arm muscles','Enables shoulder and elbow movement']}, new THREE.Vector3(sx*0.25,0.1,0),'upperlimb_'+label);
+
+  const elbowY = SHOULDER_Y - humLen;
+  const faLen=0.25;
+  const rad = makeLongBone(faLen, 0.011, 0.017);
+  registerBone('radius_'+label, rad, new THREE.Vector3(shoulderX+sx*0.012, elbowY-faLen/2, z0+0.012), ZERO_ROT,
+    {name:'Radius ('+cap(label)+')', region:'Appendicular Skeleton › Upper Limb ('+cap(label)+')',
+     location:'Forearm, on the thumb side.',
+     description:'The radius is a forearm bone that rotates around the ulna, letting the palm turn up or down.',
+     features:['Head','Radial tuberosity','Styloid process'],
+     func:['Enables forearm rotation (pronation and supination)','Transmits force from the hand toward the elbow']}, new THREE.Vector3(sx*0.28,0.08,0.05),'upperlimb_'+label);
+
+  const uln = makeLongBone(faLen*1.02, 0.011, 0.016);
+  registerBone('ulna_'+label, uln, new THREE.Vector3(shoulderX-sx*0.012, elbowY-faLen/2, z0-0.012), ZERO_ROT,
+    {name:'Ulna ('+cap(label)+')', region:'Appendicular Skeleton › Upper Limb ('+cap(label)+')',
+     location:'Forearm, on the little-finger side.',
+     description:'The ulna is the stabilising bone of the forearm and forms the main hinge of the elbow joint.',
+     features:['Olecranon','Trochlear notch','Styloid process'],
+     func:['Forms the elbow hinge with the humerus','Stabilises the forearm during rotation']}, new THREE.Vector3(sx*0.22,0.08,-0.05),'upperlimb_'+label);
+
+  const wristY = elbowY - faLen;
+  const carp = new THREE.Group();
+  for(let r=0;r<2;r++) for(let c=0;c<4;c++){
+    const b = makeSmallBlock(0.014,0.012,0.014);
+    b.position.set((c-1.5)*0.014, -r*0.013, 0);
+    carp.add(b);
+  }
+  registerBone('carpals_'+label, carp, new THREE.Vector3(shoulderX, wristY-0.012, z0), ZERO_ROT,
+    {name:'Carpals ('+cap(label)+')', region:'Appendicular Skeleton › Upper Limb ('+cap(label)+')',
+     location:'Wrist, between the forearm and hand.',
+     description:'The eight carpal bones are arranged in two rows and form the flexible wrist.',
+     features:['Scaphoid, lunate, triquetrum, pisiform','Trapezium, trapezoid, capitate, hamate'],
+     func:['Allows wrist flexion, extension and side-to-side movement','Transmits load between the hand and forearm']}, new THREE.Vector3(sx*0.18,0.05,0.05),'upperlimb_'+label);
+
+  const metac = new THREE.Group();
+  for(let i=0;i<5;i++){
+    const b = makeSmallBlock(0.011,0.06,0.011);
+    b.position.set((i-2)*0.014, -0.03, 0);
+    metac.add(b);
+  }
+  registerBone('metacarpals_'+label, metac, new THREE.Vector3(shoulderX, wristY-0.026, z0), ZERO_ROT,
+    {name:'Metacarpals ('+cap(label)+')', region:'Appendicular Skeleton › Upper Limb ('+cap(label)+')',
+     location:'Palm of the hand.',
+     description:'The five metacarpals form the framework of the palm, one bone for each digit.',
+     features:['Base','Shaft','Head (forms the knuckle)'],
+     func:['Supports the palm','Forms the knuckle joints','Anchors muscles used for grip']}, new THREE.Vector3(sx*0.16,0.03,0.05),'upperlimb_'+label);
+
+  const phal = new THREE.Group();
+  for(let i=0;i<5;i++){
+    const b = makeSmallBlock(0.009,0.045,0.009);
+    b.position.set((i-2)*0.014, -0.085 - (i===2?0.01:0), 0);
+    phal.add(b);
+  }
+  registerBone('phalanges_hand_'+label, phal, new THREE.Vector3(shoulderX, wristY-0.026, z0), ZERO_ROT,
+    {name:'Phalanges of Hand ('+cap(label)+')', region:'Appendicular Skeleton › Upper Limb ('+cap(label)+')',
+     location:'Fingers and thumb.',
+     description:'The phalanges are the small bones of the fingers — three per finger and two in the thumb.',
+     features:['Proximal phalanges','Middle phalanges (absent in thumb)','Distal phalanges'],
+     func:['Enable finger and thumb movement','Support grasping and fine motor tasks']}, new THREE.Vector3(sx*0.14,0.0,0.06),'upperlimb_'+label);
+}
+buildUpperLimb(-1,'left');
+buildUpperLimb(1,'right');
+
+/* ---------- PELVIC GIRDLE (per side) ---------- */
+function buildPelvicGirdle(side, label){
+  const sx = side;
+  const ilium = makeFlatBone(0.11,0.14,0.05);
+  ilium.rotation.z = sx*0.25;
+  ilium.rotation.y = sx*0.15;
+  registerBone('ilium_'+label, new THREE.Group().add(ilium),
+    new THREE.Vector3(sx*0.11, PELVIS_TOP_Y-0.06, -0.02), ZERO_ROT,
+    {name:'Ilium ('+cap(label)+')', region:'Appendicular Skeleton › Pelvic Girdle',
+     location:'Upper, flared part of the hip bone.',
+     description:'The ilium is the largest part of the hip bone, forming the broad wing felt at the waistline.',
+     features:['Iliac crest','Iliac fossa','Anterior superior iliac spine'],
+     func:['Supports abdominal organs','Anchors hip and trunk muscles','Forms the sacroiliac joint with the sacrum']}, new THREE.Vector3(sx*0.3,0.1,-0.15),'pelvis');
+
+  const ischium = makeLongBone(0.09,0.017,0.02);
+  ischium.rotation.x = 0.9;
+  ischium.rotation.z = sx*0.15;
+  registerBone('ischium_'+label, new THREE.Group().add(ischium),
+    new THREE.Vector3(sx*0.09, HIP_Y-0.02, -0.03), ZERO_ROT,
+    {name:'Ischium ('+cap(label)+')', region:'Appendicular Skeleton › Pelvic Girdle',
+     location:'Lower, rear part of the hip bone.',
+     description:'The ischium forms the lower back part of the hip bone and bears weight when sitting.',
+     features:['Ischial tuberosity','Ischial spine','Ischial ramus'],
+     func:['Bears body weight while sitting','Anchors the hamstring muscles']}, new THREE.Vector3(sx*0.28,-0.05,-0.1),'pelvis');
+
+  const pubis = makeLongBone(0.075,0.014,0.017);
+  pubis.rotation.x = 0.7;
+  pubis.rotation.z = sx*0.4;
+  registerBone('pubis_'+label, new THREE.Group().add(pubis),
+    new THREE.Vector3(sx*0.05, HIP_Y+0.02, 0.075), ZERO_ROT,
+    {name:'Pubis ('+cap(label)+')', region:'Appendicular Skeleton › Pelvic Girdle',
+     location:'Front, lower part of the hip bone.',
+     description:'The pubis forms the front of the hip bone and meets its opposite side at the pubic symphysis.',
+     features:['Pubic symphysis','Superior ramus','Inferior ramus'],
+     func:['Anchors abdominal and thigh muscles','Stabilises the front of the pelvic ring']}, new THREE.Vector3(sx*0.2,-0.02,0.2),'pelvis');
+}
+buildPelvicGirdle(-1,'left');
+buildPelvicGirdle(1,'right');
+
+/* ---------- LOWER LIMB (per side) ---------- */
+function buildLowerLimb(side, label){
+  const sx = side;
+  const hipX = sx*0.09;
+
+  const femLen=0.45;
+  const fem = makeLongBone(femLen, 0.021, 0.032);
+  registerBone('femur_'+label, fem, new THREE.Vector3(hipX, HIP_Y-femLen/2, 0), ZERO_ROT,
+    {name:'Femur ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Thigh, between the hip and the knee.',
+     description:'The femur is the longest and strongest bone in the body, transmitting body weight from the hip to the knee.',
+     features:['Head','Neck','Greater & lesser trochanters','Medial & lateral condyles'],
+     func:['Supports body weight','Anchors hip and thigh muscles','Forms the hip and knee joints']}, new THREE.Vector3(sx*0.18,0,0),'lowerlimb_'+label);
+
+  const patella = makeSphereBone(0.02,1,1.2,0.55);
+  registerBone('patella_'+label, new THREE.Group().add(patella), new THREE.Vector3(hipX, KNEE_Y+0.015, 0.03), ZERO_ROT,
+    {name:'Patella ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Front of the knee.',
+     description:'The patella, or kneecap, is a small sesamoid bone embedded in the thigh muscle tendon.',
+     features:['Apex','Base','Posterior articular surface'],
+     func:['Protects the knee joint','Increases the leverage of the thigh muscle during leg extension']}, new THREE.Vector3(sx*0.15,0,0.15),'lowerlimb_'+label);
+
+  const tibLen=0.39;
+  const tib = makeLongBone(tibLen, 0.02, 0.028);
+  registerBone('tibia_'+label, tib, new THREE.Vector3(hipX-sx*0.005, KNEE_Y-tibLen/2, 0), ZERO_ROT,
+    {name:'Tibia ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Lower leg, on the shin side.',
+     description:'The tibia, or shinbone, is the main weight-bearing bone of the lower leg.',
+     features:['Medial & lateral condyles','Tibial tuberosity','Medial malleolus'],
+     func:['Bears body weight','Forms the knee joint above and the ankle joint below']}, new THREE.Vector3(sx*0.16,0,0),'lowerlimb_'+label);
+
+  const fib = makeLongBone(tibLen*0.97, 0.011, 0.015);
+  registerBone('fibula_'+label, fib, new THREE.Vector3(hipX+sx*0.028, KNEE_Y-tibLen/2, -0.01), ZERO_ROT,
+    {name:'Fibula ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Lower leg, on the outer side.',
+     description:'The fibula is a thin bone alongside the tibia that stabilises the ankle and anchors lower-leg muscles.',
+     features:['Head','Shaft','Lateral malleolus'],
+     func:['Stabilises the ankle joint','Anchors muscles of the lower leg','Bears minimal body weight']}, new THREE.Vector3(sx*0.24,0,-0.02),'lowerlimb_'+label);
+
+  const tars = new THREE.Group();
+  const heel = makeSmallBlock(0.035,0.03,0.06); heel.position.set(0,-0.005,-0.03);
+  const midfoot = makeSmallBlock(0.045,0.022,0.035); midfoot.position.set(0,-0.005,0.01);
+  tars.add(heel, midfoot);
+  registerBone('tarsals_'+label, tars, new THREE.Vector3(hipX, ANKLE_Y-0.02, 0.02), ZERO_ROT,
+    {name:'Tarsals ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Ankle and back of the foot.',
+     description:'The seven tarsal bones form the ankle and back of the foot, including the heel.',
+     features:['Talus','Calcaneus (heel bone)','Navicular','Cuboid & cuneiforms'],
+     func:['Transmits body weight from the leg to the foot','Forms the ankle joint','Supports the arches of the foot']}, new THREE.Vector3(sx*0.16,-0.15,0.05),'lowerlimb_'+label);
+
+  const metat = new THREE.Group();
+  for(let i=0;i<5;i++){
+    const b = makeSmallBlock(0.01,0.012,0.07);
+    b.position.set((i-2)*0.013, 0, 0.06);
+    metat.add(b);
+  }
+  registerBone('metatarsals_'+label, metat, new THREE.Vector3(hipX, ANKLE_Y-0.015, 0.03), ZERO_ROT,
+    {name:'Metatarsals ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Middle of the foot.',
+     description:'The five metatarsals form the framework of the sole, one for each toe.',
+     features:['Base','Shaft','Head'],
+     func:['Supports the arches of the foot','Bears weight during standing and walking']}, new THREE.Vector3(sx*0.14,-0.15,0.08),'lowerlimb_'+label);
+
+  const phalF = new THREE.Group();
+  for(let i=0;i<5;i++){
+    const b = makeSmallBlock(0.009,0.01,0.025);
+    b.position.set((i-2)*0.013, 0, 0.1);
+    phalF.add(b);
+  }
+  registerBone('phalanges_foot_'+label, phalF, new THREE.Vector3(hipX, ANKLE_Y-0.015, 0.03), ZERO_ROT,
+    {name:'Phalanges of Foot ('+cap(label)+')', region:'Appendicular Skeleton › Lower Limb ('+cap(label)+')',
+     location:'Toes.',
+     description:'The phalanges of the foot are the small toe bones — three per toe, except the big toe, which has two.',
+     features:['Proximal phalanges','Middle phalanges (absent in the big toe)','Distal phalanges'],
+     func:['Provide balance during standing','Assist push-off while walking']}, new THREE.Vector3(sx*0.12,-0.15,0.12),'lowerlimb_'+label);
+}
+buildLowerLimb(-1,'left');
+buildLowerLimb(1,'right');
+
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+/* =========================================================================
+   SECTION 5 — REGION TREE (nav data) mirrors anatomical grouping
+   ========================================================================= */
+
+const NAV_TREE = [
+  {name:'Axial Skeleton', desc:"The axial skeleton forms the body's central axis — skull, vertebral column, and thoracic cage — protecting the brain, spinal cord, heart, and lungs.", children:[
+    {name:'Skull', desc:'The skull is formed by the cranial and facial bones, protecting the brain and shaping the face.', children:[
+      {name:'Cranial Bones', id:'cranial_bones'}, {name:'Facial Bones', id:'facial_bones'}
+    ]},
+    {name:'Vertebral Column', desc:'A flexible chain of vertebrae that supports the trunk and protects the spinal cord.', children:[
+      {name:'Cervical Vertebrae', id:'cervical_vertebrae'},
+      {name:'Thoracic Vertebrae', id:'thoracic_vertebrae'},
+      {name:'Lumbar Vertebrae', id:'lumbar_vertebrae'},
+      {name:'Sacrum', id:'sacrum'},
+      {name:'Coccyx', id:'coccyx'}
+    ]},
+    {name:'Thoracic Cage', desc:'Formed by the sternum, ribs, and thoracic vertebrae, protecting the heart and lungs.', children:[
+      {name:'Sternum', id:'sternum'}, {name:'Ribs', id:'ribs'}
+    ]}
+  ]},
+  {name:'Appendicular Skeleton', desc:'Includes the limbs and the girdles that attach them to the trunk, enabling movement and manipulation.', children:[
+    {name:'Pectoral Girdle', desc:'Attaches the arm to the trunk through the clavicle and scapula.', children:[
+      {name:'Clavicle (Left)', id:'clavicle_left'}, {name:'Clavicle (Right)', id:'clavicle_right'},
+      {name:'Scapula (Left)', id:'scapula_left'}, {name:'Scapula (Right)', id:'scapula_right'}
+    ]},
+    {name:'Upper Limb (Left)', desc:'The arm, forearm, and hand bones of the left side.', children:[
+      {name:'Humerus', id:'humerus_left'}, {name:'Radius', id:'radius_left'}, {name:'Ulna', id:'ulna_left'},
+      {name:'Carpals', id:'carpals_left'}, {name:'Metacarpals', id:'metacarpals_left'}, {name:'Phalanges of Hand', id:'phalanges_hand_left'}
+    ]},
+    {name:'Upper Limb (Right)', desc:'The arm, forearm, and hand bones of the right side.', children:[
+      {name:'Humerus', id:'humerus_right'}, {name:'Radius', id:'radius_right'}, {name:'Ulna', id:'ulna_right'},
+      {name:'Carpals', id:'carpals_right'}, {name:'Metacarpals', id:'metacarpals_right'}, {name:'Phalanges of Hand', id:'phalanges_hand_right'}
+    ]},
+    {name:'Pelvic Girdle', desc:'Formed by the two hip bones, connecting the spine to the lower limbs.', children:[
+      {name:'Ilium (Left)', id:'ilium_left'}, {name:'Ilium (Right)', id:'ilium_right'},
+      {name:'Ischium (Left)', id:'ischium_left'}, {name:'Ischium (Right)', id:'ischium_right'},
+      {name:'Pubis (Left)', id:'pubis_left'}, {name:'Pubis (Right)', id:'pubis_right'}
+    ]},
+    {name:'Lower Limb (Left)', desc:'The thigh, leg, and foot bones of the left side.', children:[
+      {name:'Femur', id:'femur_left'}, {name:'Patella', id:'patella_left'}, {name:'Tibia', id:'tibia_left'}, {name:'Fibula', id:'fibula_left'},
+      {name:'Tarsals', id:'tarsals_left'}, {name:'Metatarsals', id:'metatarsals_left'}, {name:'Phalanges of Foot', id:'phalanges_foot_left'}
+    ]},
+    {name:'Lower Limb (Right)', desc:'The thigh, leg, and foot bones of the right side.', children:[
+      {name:'Femur', id:'femur_right'}, {name:'Patella', id:'patella_right'}, {name:'Tibia', id:'tibia_right'}, {name:'Fibula', id:'fibula_right'},
+      {name:'Tarsals', id:'tarsals_right'}, {name:'Metatarsals', id:'metatarsals_right'}, {name:'Phalanges of Foot', id:'phalanges_foot_right'}
+    ]}
+  ]}
+];
+
+function collectIds(node, out){
+  if(node.id){ out.push(node.id); return out; }
+  if(node.children) node.children.forEach(c=>collectIds(c,out));
+  return out;
+}
+
+function renderNavTree(){
+  const root = document.getElementById('nav-tree');
+  root.innerHTML='';
+  NAV_TREE.forEach(system=>{
+    const sysLabel = document.createElement('div');
+    sysLabel.className='nav-sys';
+    sysLabel.textContent = system.name.toUpperCase();
+    root.appendChild(sysLabel);
+    system.children.forEach(branch=>renderBranch(branch, root, 0));
+  });
+}
+
+function renderBranch(node, parentEl, depth){
+  if(node.children){
+    const wrap = document.createElement('div');
+    wrap.className='nav-branch';
+    const label = document.createElement('div');
+    label.className='nav-branch-label';
+    label.dataset.name = node.name;
+    label.innerHTML = '<span class="caret"></span><span>'+node.name+'</span>';
+    const kids = document.createElement('div');
+    kids.className='nav-children';
+    node.children.forEach(c=>renderBranch(c, kids, depth+1));
+    label.addEventListener('click', (e)=>{
+      wrap.classList.toggle('open');
+      selectRegionNode(node, label);
+    });
+    wrap.appendChild(label); wrap.appendChild(kids);
+    parentEl.appendChild(wrap);
+  } else {
+    const leaf = document.createElement('div');
+    leaf.className='nav-leaf';
+    leaf.textContent = node.name;
+    leaf.dataset.id = node.id;
+    leaf.addEventListener('click', ()=>{ selectBoneById(node.id); closeNav(); });
+    parentEl.appendChild(leaf);
+  }
+}
+
+function selectRegionNode(node, labelEl){
+  const ids = collectIds(node, []);
+  const info = {
+    name: node.name,
+    region: 'Region',
+    location: 'Multiple bones — see list below.',
+    description: node.desc || '',
+    features: ids.map(id=>boneData[id]? boneData[id].name : id),
+    func: []
+  };
+  setSelection(ids, info, true);
+  highlightNavSelection(null, labelEl);
+  document.getElementById('info-features-row').style.display = ids.length? 'block':'none';
+  document.getElementById('info-function-row').style.display = 'none';
+  focusOnIds(ids);
+}
+
+function highlightNavSelection(leafId, branchEl){
+  document.querySelectorAll('.nav-leaf.selected, .nav-branch-label.selected').forEach(el=>el.classList.remove('selected'));
+  if(branchEl) branchEl.classList.add('selected');
+  if(leafId){
+    const el = document.querySelector('.nav-leaf[data-id="'+leafId+'"]');
+    if(el) el.classList.add('selected');
+  }
+}
+
+/* =========================================================================
+   SECTION 6 — SELECTION, HIGHLIGHT, INFO PANEL
+   ========================================================================= */
+
+let selectedIds = new Set();
+let isolateActive = false;
+let explodeActive = false;
+const HIGHLIGHT_COLOR = new THREE.Color(0xD2A24C);
+
+function applyVisualState(){
+  pickables.forEach(mesh=>{
+    const id = mesh.userData.rootId;
+    const isSelected = selectedIds.has(id);
+    const mat = mesh.material;
+    if(isSelected){
+      mat.emissive = HIGHLIGHT_COLOR;
+      mat.emissiveIntensity = 0.55;
+      mat.opacity = 1; mat.transparent = false;
+    } else {
+      mat.emissiveIntensity = 0;
+      if(isolateActive){
+        mat.transparent = true;
+        mat.opacity = 0.05;
+      } else if(selectedIds.size>0){
+        mat.transparent = true;
+        mat.opacity = 0.35;
+      } else {
+        mat.transparent = false;
+        mat.opacity = 1;
+      }
+    }
+  });
+}
+
+function setSelection(ids, info, isRegion){
+  selectedIds = new Set(ids);
+  applyVisualState();
+  showInfoPanel(info, isRegion);
+  document.getElementById('btn-isolate').textContent = isRegion? 'Isolate region' : 'Isolate selected';
+  document.getElementById('btn-isolate').style.display = ids.length? 'inline-block':'none';
+}
+
+function clearSelection(){
+  selectedIds = new Set();
+  applyVisualState();
+  hideInfoPanel();
+  highlightNavSelection(null,null);
+}
+
+function selectBoneById(id){
+  const data = boneData[id];
+  if(!data) return;
+  setSelection([id], data, false);
+  highlightNavSelection(id, null);
+}
+
+function handleTap(x,y){
+  const rect = dom.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((x-rect.left)/rect.width)*2-1,
+    -((y-rect.top)/rect.height)*2+1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(pickables, false);
+  if(hits.length){
+    const id = hits[0].object.userData.rootId;
+    selectBoneById(id);
+  } else {
+    if(!isolateActive) clearSelection();
+  }
+}
+
+function showInfoPanel(info, isRegion){
+  document.getElementById('info-eyebrow').textContent = info.region || '';
+  document.getElementById('info-name').textContent = info.name || '';
+  document.getElementById('info-location').textContent = info.location || '';
+  document.getElementById('info-desc').textContent = info.description || '';
+  const featRow = document.getElementById('info-features-row');
+  const funcRow = document.getElementById('info-function-row');
+  const featList = document.getElementById('info-features');
+  const funcList = document.getElementById('info-function');
+  featList.innerHTML=''; funcList.innerHTML='';
+  (info.features||[]).forEach(f=>{ const li=document.createElement('li'); li.textContent=f; featList.appendChild(li); });
+  (info.func||[]).forEach(f=>{ const li=document.createElement('li'); li.textContent=f; funcList.appendChild(li); });
+  featRow.style.display = (info.features&&info.features.length)? 'block':'none';
+  funcRow.style.display = (info.func&&info.func.length)? 'block':'none';
+  document.getElementById('info-panel').classList.add('open');
+  document.getElementById('info-scrim').classList.add('open');
+}
+function hideInfoPanel(){
+  document.getElementById('info-panel').classList.remove('open');
+  document.getElementById('info-scrim').classList.remove('open');
+}
+
+function focusOnIds(ids){
+  if(!ids.length) return;
+  const box = new THREE.Box3();
+  ids.forEach(id=>{
+    const grp = bones[id];
+    if(grp){ box.expandByObject(grp); }
+  });
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x,size.y,size.z, 0.06);
+  orbit.targetGoal.copy(center);
+  orbit.radiusGoal = Math.min(orbit.maxRadius, Math.max(orbit.minRadius, maxDim*2.6));
+}
+
+/* =========================================================================
+   SECTION 7 — ISOLATE MODE
+   ========================================================================= */
+
+document.getElementById('btn-isolate').addEventListener('click', ()=>{
+  if(!selectedIds.size) return;
+  isolateActive = !isolateActive;
+  applyVisualState();
+  updateShowAllVisibility();
+  if(isolateActive) focusOnIds([...selectedIds]);
+});
+
+function exitIsolate(){
+  isolateActive = false;
+  applyVisualState();
+  updateShowAllVisibility();
+}
+
+/* =========================================================================
+   SECTION 8 — EXPLODE MODE
+   ========================================================================= */
+
+let explodeFactor = 0;      // animated 0..1
+let explodeFactorGoal = 0;
+
+document.querySelector('[data-mode="explode"]').addEventListener('click', (e)=>{
+  explodeActive = !explodeActive;
+  explodeFactorGoal = explodeActive ? 1 : 0;
+  e.target.classList.toggle('active', explodeActive);
+  updateShowAllVisibility();
+});
+
+function tickExplode(){
+  explodeFactor += (explodeFactorGoal - explodeFactor) * 0.09;
+  Object.keys(REGION_GROUPS).forEach(region=>{
+    REGION_GROUPS[region].forEach(id=>{
+      const grp = bones[id];
+      if(!grp) return;
+      grp.position.copy(grp.userData.basePos).addScaledVector(grp.userData.explodeOffset, explodeFactor);
+    });
+  });
+}
+
+/* =========================================================================
+   SECTION 9 — SHOW ALL / RESET, UI WIRING
+   ========================================================================= */
+
+function updateShowAllVisibility(){
+  const anyHidden = isolateActive || explodeActive;
+  document.getElementById('cb-showall').style.display = anyHidden? 'inline-block':'none';
+  document.getElementById('showall-top').style.visibility = anyHidden? 'visible':'hidden';
+}
+
+function showAll(){
+  isolateActive = false;
+  explodeActive = false;
+  explodeFactorGoal = 0;
+  document.querySelector('[data-mode="explode"]').classList.remove('active');
+  clearSelection();
+  updateShowAllVisibility();
+  setView('reset');
+}
+document.getElementById('cb-showall').addEventListener('click', showAll);
+document.getElementById('showall-top').addEventListener('click', showAll);
+
+document.getElementById('btn-focus').addEventListener('click', ()=>{
+  if(selectedIds.size) focusOnIds([...selectedIds]);
+});
+
+document.querySelectorAll('#cb-cam [data-view]').forEach(btn=>{
+  btn.addEventListener('click', ()=>setView(btn.dataset.view));
+});
+
+// Nav panel open/close
+const navPanel = document.getElementById('nav-panel');
+const navScrim = document.getElementById('nav-scrim');
+function openNav(){ navPanel.classList.add('open'); navScrim.classList.add('open'); }
+function closeNav(){ navPanel.classList.remove('open'); navScrim.classList.remove('open'); }
+document.getElementById('nav-toggle').addEventListener('click', openNav);
+document.getElementById('nav-close').addEventListener('click', closeNav);
+navScrim.addEventListener('click', closeNav);
+
+// Info panel close
+const infoPanel = document.getElementById('info-panel');
+const infoScrim = document.getElementById('info-scrim');
+document.getElementById('info-close').addEventListener('click', ()=>{ if(!isolateActive) clearSelection(); else hideInfoPanel(); });
+infoScrim.addEventListener('click', ()=>{ if(!isolateActive) clearSelection(); else hideInfoPanel(); });
+
+// simple drag-to-dismiss on the info sheet handle
+(function(){
+  const handle = document.getElementById('info-drag');
+  let startY=null;
+  handle.addEventListener('touchstart', e=>{ startY = e.touches[0].clientY; },{passive:true});
+  handle.addEventListener('touchmove', e=>{
+    if(startY===null) return;
+    const dy = e.touches[0].clientY - startY;
+    if(dy>60){ if(!isolateActive) clearSelection(); else hideInfoPanel(); startY=null; }
+  },{passive:true});
+  handle.addEventListener('touchend', ()=>{ startY=null; });
+})();
+
+renderNavTree();
+updateShowAllVisibility();
+
+// Hint auto-fade
+setTimeout(()=>{ const h=document.getElementById('hint'); h.style.opacity='0'; setTimeout(()=>h.remove(),600); }, 5200);
+
+/* =========================================================================
+   SECTION 10 — RENDER LOOP
+   ========================================================================= */
+
+updateCameraFromOrbit();
+function animate(){
+  requestAnimationFrame(animate);
+  tickOrbit();
+  tickExplode();
+  renderer.render(scene, camera);
+}
+animate();
+
+})();
+</script>
+</body>
+</html>
